@@ -1,0 +1,61 @@
+name: Build source code and check lint
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        id: install_code
+        run: bun install
+      - name: Lint
+        id: lint_code
+        run: bun run lint
+      - name: Build
+        id: build_code
+        run: bun run build
+  deploy:
+    needs: lint
+    runs-on: ubuntu-latest
+    name: "Build code and npm release"
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        id: install_code
+        run: bun install
+      - name: Build
+        id: build_code
+        run: bun run build
+      - uses: js-devtools/npm-publish@v4
+        if: ${{ !contains(github.ref, '-alpha.') }}
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
+          provenance: true
+      - uses: js-devtools/npm-publish@v4
+        if: ${{ contains(github.ref, '-alpha.') }}
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
+          tag: next
+          provenance: true
+      - name: Create GitHub release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-alpha.') }}
