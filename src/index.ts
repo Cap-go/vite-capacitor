@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
 import type { Logger, Plugin, ResolvedConfig, ViteDevServer } from "vite";
@@ -173,6 +173,24 @@ export default function viteCapacitor(
     }
   }
 
+  function restoreConfigsSync(log: PluginLog) {
+    if (trackedFiles.size === 0) {
+      return;
+    }
+
+    const entries = Array.from(trackedFiles.entries());
+    trackedFiles.clear();
+    appliedUrl = null;
+
+    for (const [file, state] of entries) {
+      try {
+        writeFileSync(file, state.originalContent, "utf8");
+      } catch (error) {
+        log.warn("Failed while restoring Capacitor config file.", error);
+      }
+    }
+  }
+
   function safeParseConfig(
     content: string,
     displayPath: string,
@@ -217,9 +235,9 @@ export default function viteCapacitor(
     }
 
     process.once("exit", () => {
-      if (!shuttingDown) {
+      if (trackedFiles.size > 0) {
         shuttingDown = true;
-        void cleanup(log);
+        restoreConfigsSync(log);
       }
     });
   }
