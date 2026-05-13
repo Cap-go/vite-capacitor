@@ -1,4 +1,5 @@
 # @capgo/vite-capacitor
+
 <a href="https://capgo.app/"><img src='https://raw.githubusercontent.com/Cap-go/capgo/main/assets/capgo_banner.png' alt='Capgo - Instant updates for capacitor'/></a>
 
 <div align="center">
@@ -44,6 +45,22 @@ The plugin will:
 - skip untouched files that are missing or unchanged,
 - restore the original files when Vite shuts down or the process exits.
 
+For physical iOS or Android devices, expose Vite on the network and opt into a LAN URL:
+
+```ts
+viteCapacitor({
+  platforms: ["ios", "android"],
+  cleartext: true,
+  networkUrl: true,
+});
+```
+
+```bash
+npm run dev -- --host 0.0.0.0
+```
+
+When `networkUrl` is enabled and Vite listens on `0.0.0.0`, `::`, or `server.host === true`, the plugin writes `http://<local-lan-ip>:<port>` instead of `localhost`. To choose a specific interface, set `CAP_SERVER_HOST` or pass `networkUrl: { host: "192.168.1.23" }`.
+
 ## Options
 
 ```ts
@@ -56,6 +73,7 @@ viteCapacitor({
   cleartext?: boolean; // defaults to true
   logLevel?: "silent" | "info" | "debug";
   urlOverride?: string | ((context) => string); // force a specific URL instead of auto-detecting
+  networkUrl?: boolean | { host?: string }; // use a LAN host for wildcard Vite hosts
 });
 ```
 

@@ -14,6 +14,8 @@ export default {
     'node:fs/promises',
     'path',
     'node:path',
+    'os',
+    'node:os',
     'url',
     'node:url',
   ],

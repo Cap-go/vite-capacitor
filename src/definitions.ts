@@ -8,6 +8,14 @@ export interface ServerUrlContext {
   protocol: "http" | "https";
 }
 
+export interface NetworkUrlOptions {
+  /**
+   * Hostname or IP address to write when Vite listens on every interface.
+   * Defaults to CAP_SERVER_HOST or the first non-internal local IPv4 address.
+   */
+  host?: string;
+}
+
 export interface ViteCapacitorPluginOptions {
   /**
    * Override the working directory used to resolve config files.
@@ -45,4 +53,9 @@ export interface ViteCapacitorPluginOptions {
    * Override the URL detection with a static string or a factory.
    */
   urlOverride?: string | ((context: ServerUrlContext) => string);
+  /**
+   * Use a LAN-reachable host when Vite is exposed with --host 0.0.0.0, --host ::,
+   * or server.host === true. Defaults to false to preserve the localhost behavior.
+   */
+  networkUrl?: boolean | NetworkUrlOptions;
 }
