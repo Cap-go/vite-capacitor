@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { networkInterfaces } from "node:os";
 import path from "node:path";
 import type { Logger, Plugin, ResolvedConfig, ViteDevServer } from "vite";
 
@@ -245,8 +246,11 @@ export default function viteCapacitor(
 
         const protocol = server.config.server.https ? "https" : "http";
         const host = pickHost(server.config.server.host);
-        const resolvedHost =
-          host === "0.0.0.0" || host === "::" ? "localhost" : host;
+        const resolvedHost = resolveReachableHost(
+          host,
+          options.networkUrl,
+          log,
+        );
         const context: ServerUrlContext = {
           host: resolvedHost,
           port: addressInfo.port,
@@ -348,6 +352,80 @@ function pickHost(hostOption: ResolvedConfig["server"]["host"]): string {
     return "0.0.0.0";
   }
   return hostOption;
+}
+
+function resolveReachableHost(
+  host: string,
+  networkUrl: ViteCapacitorPluginOptions["networkUrl"],
+  log: PluginLog,
+): string {
+  if (!isWildcardHost(host)) {
+    return host;
+  }
+
+  if (!networkUrl) {
+    return "localhost";
+  }
+
+  const configuredHost =
+    getConfiguredNetworkHost(networkUrl) ??
+    normalizeHost(process.env.CAP_SERVER_HOST);
+  if (configuredHost) {
+    log.debug(`Using configured network host ${configuredHost}.`);
+    return configuredHost;
+  }
+
+  const localIpv4 = pickLocalIpv4();
+  if (localIpv4) {
+    log.debug(`Using local network host ${localIpv4}.`);
+    return localIpv4;
+  }
+
+  log.warn(
+    "networkUrl is enabled, but no non-internal IPv4 address was found. Falling back to localhost.",
+  );
+  return "localhost";
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::";
+}
+
+function getConfiguredNetworkHost(
+  networkUrl: ViteCapacitorPluginOptions["networkUrl"],
+): string | undefined {
+  if (typeof networkUrl !== "object" || networkUrl === null) {
+    return undefined;
+  }
+  return normalizeHost(networkUrl.host);
+}
+
+function normalizeHost(host: string | undefined): string | undefined {
+  const normalized = host?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function pickLocalIpv4(): string | undefined {
+  for (const entries of Object.values(networkInterfaces())) {
+    if (!entries) {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (
+        entry.family === "IPv4" &&
+        !entry.internal &&
+        isUsableIpv4(entry.address)
+      ) {
+        return entry.address;
+      }
+    }
+  }
+  return undefined;
+}
+
+function isUsableIpv4(address: string): boolean {
+  return address !== "0.0.0.0" && !address.startsWith("169.254.");
 }
 
 function createLoggers(logger: Logger, level: LogLevel): PluginLog {
