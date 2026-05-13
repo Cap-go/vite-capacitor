@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     name: "Bump version and create changelog with standard version"
     steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
       - name: Check out
         uses: actions/checkout@v6
         with:
@@ -43,6 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     name: "Create global cache on main branch"
     steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
