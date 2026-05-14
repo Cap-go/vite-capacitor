@@ -75,7 +75,6 @@ export default function viteCapacitor(
       registerProcessCleanup(log);
 
       server.httpServer?.once("close", () => {
-        shuttingDown = true;
         restoreConfigs(log);
       });
 
@@ -155,19 +154,19 @@ export default function viteCapacitor(
     if (trackedFiles.size === 0) {
       return;
     }
-    const entries = Array.from(trackedFiles.entries());
-    trackedFiles.clear();
-    appliedUrl = null;
-
-    for (const [file, state] of entries) {
+    for (const [file, state] of Array.from(trackedFiles.entries())) {
       try {
         writeFileSync(file, state.originalContent, "utf8");
+        trackedFiles.delete(file);
         if (!shuttingDown) {
           log.info(`Restored ${shortPath(file)}.`);
         }
       } catch (error) {
         log.warn("Failed while restoring Capacitor config file.", error);
       }
+    }
+    if (trackedFiles.size === 0) {
+      appliedUrl = null;
     }
   }
 
@@ -203,7 +202,9 @@ export default function viteCapacitor(
         shuttingDown = true;
         restoreConfigs(log);
       }
-      process.exit(SIGNAL_EXIT_CODES[signal]);
+      if (process.listenerCount(signal) === 0) {
+        process.exit(SIGNAL_EXIT_CODES[signal]);
+      }
     };
 
     for (const signal of ["SIGINT", "SIGTERM", "SIGQUIT"] as const) {
