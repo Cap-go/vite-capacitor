@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
 import type { Logger, Plugin, ResolvedConfig, ViteDevServer } from "vite";
@@ -35,6 +35,11 @@ const PLUGIN_NAME = "@capgo/vite-capacitor";
 const DEFAULT_IOS_PATH = "ios/App/App/capacitor.config.json";
 const DEFAULT_ANDROID_PATH =
   "android/app/src/main/assets/capacitor.config.json";
+const SIGNAL_EXIT_CODES = {
+  SIGINT: 130,
+  SIGTERM: 143,
+  SIGQUIT: 131,
+} as const;
 
 export default function viteCapacitor(
   options: ViteCapacitorPluginOptions = {},
@@ -67,11 +72,11 @@ export default function viteCapacitor(
         return;
       }
 
-      registerProcessCleanup(log, restoreConfigs);
+      registerProcessCleanup(log);
 
-      server.httpServer?.once("close", async () => {
+      server.httpServer?.once("close", () => {
         shuttingDown = true;
-        await restoreConfigs(log);
+        restoreConfigs(log);
       });
 
       waitForServer(server, log).then(
@@ -146,7 +151,7 @@ export default function viteCapacitor(
     appliedUrl = url;
   }
 
-  async function restoreConfigs(log: PluginLog) {
+  function restoreConfigs(log: PluginLog) {
     if (trackedFiles.size === 0) {
       return;
     }
@@ -154,21 +159,14 @@ export default function viteCapacitor(
     trackedFiles.clear();
     appliedUrl = null;
 
-    const results = await Promise.allSettled(
-      entries.map(async ([file, state]) => {
-        await fs.writeFile(file, state.originalContent, "utf8");
+    for (const [file, state] of entries) {
+      try {
+        writeFileSync(file, state.originalContent, "utf8");
         if (!shuttingDown) {
           log.info(`Restored ${shortPath(file)}.`);
         }
-      }),
-    );
-
-    for (const result of results) {
-      if (result.status === "rejected") {
-        log.warn(
-          "Failed while restoring Capacitor config file.",
-          result.reason,
-        );
+      } catch (error) {
+        log.warn("Failed while restoring Capacitor config file.", error);
       }
     }
   }
@@ -194,32 +192,28 @@ export default function viteCapacitor(
     }
   }
 
-  function registerProcessCleanup(
-    log: PluginLog,
-    cleanup: (logger: PluginLog) => Promise<void>,
-  ) {
+  function registerProcessCleanup(log: PluginLog) {
     if (cleanupRegistered) {
       return;
     }
     cleanupRegistered = true;
 
-    const handleSignal = async () => {
-      if (shuttingDown) {
-        return;
+    const handleSignal = (signal: keyof typeof SIGNAL_EXIT_CODES) => {
+      if (!shuttingDown) {
+        shuttingDown = true;
+        restoreConfigs(log);
       }
-      shuttingDown = true;
-      await cleanup(log);
-      process.exit();
+      process.exit(SIGNAL_EXIT_CODES[signal]);
     };
 
     for (const signal of ["SIGINT", "SIGTERM", "SIGQUIT"] as const) {
-      process.once(signal, handleSignal);
+      process.prependOnceListener(signal, () => handleSignal(signal));
     }
 
     process.once("exit", () => {
       if (!shuttingDown) {
         shuttingDown = true;
-        void cleanup(log);
+        restoreConfigs(log);
       }
     });
   }
