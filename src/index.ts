@@ -50,6 +50,7 @@ export default function viteCapacitor(
   let appliedUrl: string | null = null;
   let shuttingDown = false;
   let cleanupRegistered = false;
+  let cleanupVersion = 0;
 
   const trackedFiles = new Map<string, TrackedFileState>();
 
@@ -75,6 +76,7 @@ export default function viteCapacitor(
       registerProcessCleanup(log);
 
       server.httpServer?.once("close", () => {
+        cleanupVersion += 1;
         restoreConfigs(log);
       });
 
@@ -100,6 +102,7 @@ export default function viteCapacitor(
       return;
     }
     const cleartext = options.cleartext ?? true;
+    const writeVersion = cleanupVersion;
 
     const results = await Promise.allSettled(
       targetFiles.map(async (file) => {
@@ -136,7 +139,14 @@ export default function viteCapacitor(
           return;
         }
 
-        await fs.writeFile(file, nextContent, "utf8");
+        if (writeVersion !== cleanupVersion || shuttingDown) {
+          log.debug(
+            `Skipping stale update after cleanup started: ${displayPath}`,
+          );
+          return;
+        }
+
+        writeFileSync(file, nextContent, "utf8");
         log.info(`Updated ${displayPath} with ${url}`);
       }),
     );
@@ -147,7 +157,13 @@ export default function viteCapacitor(
       }
     }
 
-    appliedUrl = url;
+    if (
+      writeVersion === cleanupVersion &&
+      !shuttingDown &&
+      results.every((result) => result.status === "fulfilled")
+    ) {
+      appliedUrl = url;
+    }
   }
 
   function restoreConfigs(log: PluginLog) {
@@ -203,6 +219,7 @@ export default function viteCapacitor(
     const handleSignal = (signal: keyof typeof SIGNAL_EXIT_CODES) => {
       if (!shuttingDown) {
         shuttingDown = true;
+        cleanupVersion += 1;
         restoreConfigs(log);
       }
       // prependOnceListener removes this handler before its callback runs,
@@ -212,6 +229,7 @@ export default function viteCapacitor(
       }
     };
 
+    // SIGQUIT is POSIX-only and is not emitted on Windows.
     for (const signal of ["SIGINT", "SIGTERM", "SIGQUIT"] as const) {
       process.prependOnceListener(signal, () => handleSignal(signal));
     }
@@ -219,6 +237,7 @@ export default function viteCapacitor(
     process.once("exit", () => {
       if (!shuttingDown) {
         shuttingDown = true;
+        cleanupVersion += 1;
         restoreConfigs(log);
       }
     });
