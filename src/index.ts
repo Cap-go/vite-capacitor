@@ -154,6 +154,9 @@ export default function viteCapacitor(
     if (trackedFiles.size === 0) {
       return;
     }
+    if (shuttingDown) {
+      log.info("Restoring native Capacitor configs before exit.");
+    }
     for (const [file, state] of Array.from(trackedFiles.entries())) {
       try {
         writeFileSync(file, state.originalContent, "utf8");
@@ -202,6 +205,8 @@ export default function viteCapacitor(
         shuttingDown = true;
         restoreConfigs(log);
       }
+      // Once listeners are removed before invocation, so a zero count here
+      // means no other signal handlers remain to finish process shutdown.
       if (process.listenerCount(signal) === 0) {
         process.exit(SIGNAL_EXIT_CODES[signal]);
       }
