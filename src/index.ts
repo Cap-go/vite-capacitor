@@ -205,8 +205,8 @@ export default function viteCapacitor(
         shuttingDown = true;
         restoreConfigs(log);
       }
-      // Once listeners are removed before invocation, so a zero count here
-      // means no other signal handlers remain to finish process shutdown.
+      // prependOnceListener removes this handler before its callback runs,
+      // so a zero count here means no other signal handlers remain.
       if (process.listenerCount(signal) === 0) {
         process.exit(SIGNAL_EXIT_CODES[signal]);
       }
