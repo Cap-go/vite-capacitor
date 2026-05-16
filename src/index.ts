@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
 import type { Logger, Plugin, ResolvedConfig, ViteDevServer } from "vite";
@@ -35,6 +35,11 @@ const PLUGIN_NAME = "@capgo/vite-capacitor";
 const DEFAULT_IOS_PATH = "ios/App/App/capacitor.config.json";
 const DEFAULT_ANDROID_PATH =
   "android/app/src/main/assets/capacitor.config.json";
+const SIGNAL_EXIT_CODES = {
+  SIGINT: 130,
+  SIGTERM: 143,
+  SIGQUIT: 131,
+} as const;
 
 export default function viteCapacitor(
   options: ViteCapacitorPluginOptions = {},
@@ -45,6 +50,7 @@ export default function viteCapacitor(
   let appliedUrl: string | null = null;
   let shuttingDown = false;
   let cleanupRegistered = false;
+  let cleanupVersion = 0;
 
   const trackedFiles = new Map<string, TrackedFileState>();
 
@@ -67,11 +73,11 @@ export default function viteCapacitor(
         return;
       }
 
-      registerProcessCleanup(log, restoreConfigs);
+      registerProcessCleanup(log);
 
-      server.httpServer?.once("close", async () => {
-        shuttingDown = true;
-        await restoreConfigs(log);
+      server.httpServer?.once("close", () => {
+        cleanupVersion += 1;
+        restoreConfigs(log);
       });
 
       waitForServer(server, log).then(
@@ -96,6 +102,7 @@ export default function viteCapacitor(
       return;
     }
     const cleartext = options.cleartext ?? true;
+    const writeVersion = cleanupVersion;
 
     const results = await Promise.allSettled(
       targetFiles.map(async (file) => {
@@ -132,7 +139,14 @@ export default function viteCapacitor(
           return;
         }
 
-        await fs.writeFile(file, nextContent, "utf8");
+        if (writeVersion !== cleanupVersion || shuttingDown) {
+          log.debug(
+            `Skipping stale update after cleanup started: ${displayPath}`,
+          );
+          return;
+        }
+
+        writeFileSync(file, nextContent, "utf8");
         log.info(`Updated ${displayPath} with ${url}`);
       }),
     );
@@ -143,33 +157,35 @@ export default function viteCapacitor(
       }
     }
 
-    appliedUrl = url;
+    if (
+      writeVersion === cleanupVersion &&
+      !shuttingDown &&
+      results.every((result) => result.status === "fulfilled")
+    ) {
+      appliedUrl = url;
+    }
   }
 
-  async function restoreConfigs(log: PluginLog) {
+  function restoreConfigs(log: PluginLog) {
     if (trackedFiles.size === 0) {
       return;
     }
-    const entries = Array.from(trackedFiles.entries());
-    trackedFiles.clear();
-    appliedUrl = null;
-
-    const results = await Promise.allSettled(
-      entries.map(async ([file, state]) => {
-        await fs.writeFile(file, state.originalContent, "utf8");
+    if (shuttingDown) {
+      log.info("Restoring native Capacitor configs before exit.");
+    }
+    for (const [file, state] of Array.from(trackedFiles.entries())) {
+      try {
+        writeFileSync(file, state.originalContent, "utf8");
+        trackedFiles.delete(file);
         if (!shuttingDown) {
           log.info(`Restored ${shortPath(file)}.`);
         }
-      }),
-    );
-
-    for (const result of results) {
-      if (result.status === "rejected") {
-        log.warn(
-          "Failed while restoring Capacitor config file.",
-          result.reason,
-        );
+      } catch (error) {
+        log.warn("Failed while restoring Capacitor config file.", error);
       }
+    }
+    if (trackedFiles.size === 0) {
+      appliedUrl = null;
     }
   }
 
@@ -194,32 +210,35 @@ export default function viteCapacitor(
     }
   }
 
-  function registerProcessCleanup(
-    log: PluginLog,
-    cleanup: (logger: PluginLog) => Promise<void>,
-  ) {
+  function registerProcessCleanup(log: PluginLog) {
     if (cleanupRegistered) {
       return;
     }
     cleanupRegistered = true;
 
-    const handleSignal = async () => {
-      if (shuttingDown) {
-        return;
+    const handleSignal = (signal: keyof typeof SIGNAL_EXIT_CODES) => {
+      if (!shuttingDown) {
+        shuttingDown = true;
+        cleanupVersion += 1;
+        restoreConfigs(log);
       }
-      shuttingDown = true;
-      await cleanup(log);
-      process.exit();
+      // prependOnceListener removes this handler before its callback runs,
+      // so a zero count here means no other signal handlers remain.
+      if (process.listenerCount(signal) === 0) {
+        process.exit(SIGNAL_EXIT_CODES[signal]);
+      }
     };
 
+    // SIGQUIT is POSIX-only and is not emitted on Windows.
     for (const signal of ["SIGINT", "SIGTERM", "SIGQUIT"] as const) {
-      process.once(signal, handleSignal);
+      process.prependOnceListener(signal, () => handleSignal(signal));
     }
 
     process.once("exit", () => {
       if (!shuttingDown) {
         shuttingDown = true;
-        void cleanup(log);
+        cleanupVersion += 1;
+        restoreConfigs(log);
       }
     });
   }
