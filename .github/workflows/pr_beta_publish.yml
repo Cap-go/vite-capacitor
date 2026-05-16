@@ -104,6 +104,7 @@ jobs:
               core.setFailed(`PR checks are not green yet (current state: ${rollupState}).`);
               return;
             }
+            core.setOutput('status_comment_allowed', 'true');
             core.setOutput('head_sha', pr.head.sha);
 
       - name: Mark publish as running
@@ -268,7 +269,7 @@ jobs:
             });
 
       - name: Publish failure comment
-        if: ${{ failure() && steps.pr.outputs.pr_number != '' }}
+        if: ${{ failure() && steps.pr.outputs.status_comment_allowed == 'true' }}
         uses: actions/github-script@v8
         with:
           script: |
