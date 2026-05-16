@@ -40,10 +40,10 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
       - name: Create version bump main
         if: github.ref == 'refs/heads/main'
-        run: bunx capacitor-standard-version@latest --skip.changelog
+        run: bunx @capgo/capacitor-standard-version@1.3.32 --skip.changelog
       - name: Create version bump development
         if: github.ref != 'refs/heads/main'
-        run: bunx capacitor-standard-version@latest --prerelease alpha --skip.changelog
+        run: bunx @capgo/capacitor-standard-version@1.3.32 --prerelease alpha --skip.changelog
       - name: Push to origin
         run: |
           CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)

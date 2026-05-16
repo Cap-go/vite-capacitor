@@ -26,6 +26,7 @@
   ],
   "scripts": {
     "verify": "bun run lint && bun run build",
+    "test": "bun run verify",
     "lint": "bun run eslint && bun run prettier -- --check",
     "fmt": "bun run eslint -- --fix && bun run prettier -- --write",
     "eslint": "eslint . --ext .ts",
