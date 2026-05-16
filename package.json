@@ -1,6 +1,6 @@
 {
   "name": "@capgo/vite-capacitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Vite plugin that keeps native Capacitor platform configs in sync with the dev server URL.",
   "main": "dist/index.cjs",
   "module": "dist/esm/index.js",
