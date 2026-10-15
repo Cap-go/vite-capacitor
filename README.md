@@ -4,7 +4,6 @@
 
 <div align="center">
   <h2><a href="https://capgo.app/?ref=plugin_vite_capacitor"> ➡️ Get Instant updates for your App with Capgo</a></h2>
-  <h2><a href="https://capgo.app/consulting/?ref=plugin_vite_capacitor"> Missing a feature? We’ll build the plugin for you 💪</a></h2>
 </div>
 
 Capacitor copies `capacitor.config.json` into each native platform. During development you usually want the dev server URL injected so the native apps talk to Vite. This Vite plugin keeps those files in sync with the dev server lifecycle: when the server starts the URL is written, when it stops the files are restored.
